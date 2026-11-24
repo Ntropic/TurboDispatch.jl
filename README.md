@@ -5,7 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue)](LICENSE)
 [![Julia 1.13.3+](https://img.shields.io/badge/Julia-1.13.3%2B-9558B2)](Project.toml)
-[![Documentation](https://img.shields.io/badge/docs-guide-blue.svg)](docs/src/index.md)
+[![Documentation](https://img.shields.io/badge/docs-dev-blue.svg)](https://ntropic.github.io/TurboDispatch.jl/dev/)
 [![Tests](https://github.com/Ntropic/TurboDispatch.jl/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/Ntropic/TurboDispatch.jl/actions/workflows/ci.yml)
 
 **Binary dispatch trees for faster multiple dispatch in Julia.**
