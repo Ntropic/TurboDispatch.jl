@@ -11,7 +11,7 @@ TurboDispatch = {path = ".."}
 ManualDispatch = {url = "https://github.com/jlapeyre/ManualDispatch.jl"}
 
 [compat]
-julia = "1.13"
+julia = "1.13.3"
 ManualDispatch = "0.1"
 WrappedUnions = "0.3"
 LightSumTypes = "5"
