@@ -1,0 +1,19 @@
+[deps]
+TurboDispatch = "b736ba95-c7f2-4cb8-a5b5-28bd04c6585f"
+ManualDispatch = "666be00d-f264-4d02-8d64-dd271fd33b9e"
+WrappedUnions = "325db55a-9c6c-5b90-b1a2-ec87e7a38c44"
+LightSumTypes = "f56206fc-af4c-5561-a72a-43fe2ca5a923"
+SumTypes = "8e1ec7a9-0e02-4297-b0fe-6433085c89f2"
+Unityper = "a7c27f48-0311-42f6-a7f8-2c11e75eb415"
+
+[sources]
+TurboDispatch = {path = ".."}
+ManualDispatch = {url = "https://github.com/jlapeyre/ManualDispatch.jl"}
+
+[compat]
+julia = "1.13"
+ManualDispatch = "0.1"
+WrappedUnions = "0.3"
+LightSumTypes = "5"
+SumTypes = "0.5"
+Unityper = "0.1"

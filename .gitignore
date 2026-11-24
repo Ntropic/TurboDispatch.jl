@@ -1,0 +1,22 @@
+Manifest.toml
+Manifest-v*.toml
+*.jl.cov
+*.jl.mem
+*.ji
+*.o
+*.so
+*.dylib
+*.dll
+docs/build/
+
+# Local tooling and scratch files
+.agents/
+.codex/
+.aws/
+.julia/
+.vscode/
+.idea/
+.DS_Store
+*~
+*.swp
+*.swo

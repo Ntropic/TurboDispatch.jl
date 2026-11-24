@@ -1,0 +1,10 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+TurboDispatch = "b736ba95-c7f2-4cb8-a5b5-28bd04c6585f"
+
+[sources]
+TurboDispatch = {path = ".."}
+
+[compat]
+Documenter = "1"
+julia = "1.11"

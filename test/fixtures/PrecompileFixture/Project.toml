@@ -1,0 +1,5 @@
+name = "PrecompileFixture"
+uuid = "26045c9b-7271-4905-a4d0-f49bead1a0be"
+version = "0.1.0"
+[deps]
+TurboDispatch = "b736ba95-c7f2-4cb8-a5b5-28bd04c6585f"

@@ -1,0 +1,16 @@
+name = "TurboDispatch"
+uuid = "b736ba95-c7f2-4cb8-a5b5-28bd04c6585f"
+version = "0.1.0"
+authors = ["Ntropic"]
+
+[deps]
+InteractiveUtils = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+
+[compat]
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]
