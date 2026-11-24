@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 352 256" role="img" aria-labelledby="title">
+  <title id="title">TurboDispatch binary tree icon</title>
+  <defs>
+    <linearGradient id="tree-gradient" gradientUnits="userSpaceOnUse" x1="0" y1="32" x2="0" y2="224">
+      <stop offset="0" stop-color="#8538DE"/>
+      <stop offset="1" stop-color="#397FAC"/>
+    </linearGradient>
+  </defs>
+  <g fill="none" stroke-width="22" stroke-linecap="round">
+    <path d="M32 128 C80 128 96 64 144 64" stroke="url(#tree-gradient)"/>
+    <path d="M32 128 C64 128 80 192 112 192" stroke="url(#tree-gradient)"/>
+    <path d="M144 64 C216 64 248 32 320 32" stroke="url(#tree-gradient)"/>
+    <path d="M144 64 C200 64 232 96 288 96" stroke="url(#tree-gradient)"/>
+    <path d="M112 192 C168 192 200 160 256 160" stroke="url(#tree-gradient)"/>
+    <path d="M112 192 C160 192 176 224 224 224" stroke="url(#tree-gradient)"/>
+  </g>
+  <g>
+    <circle cx="32" cy="128" r="16" fill="url(#tree-gradient)"/>
+    <circle cx="144" cy="64" r="14" fill="url(#tree-gradient)"/>
+    <circle cx="112" cy="192" r="14" fill="url(#tree-gradient)"/>
+    <circle cx="320" cy="32" r="16" fill="url(#tree-gradient)"/>
+    <circle cx="288" cy="96" r="16" fill="url(#tree-gradient)"/>
+    <circle cx="256" cy="160" r="16" fill="url(#tree-gradient)"/>
+    <circle cx="224" cy="224" r="16" fill="url(#tree-gradient)"/>
+  </g>
+</svg>
