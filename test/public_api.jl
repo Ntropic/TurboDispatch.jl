@@ -7,6 +7,25 @@ score(x::Circle)=x.n+1
 score(x::Square)=2x.n
 @dispatchfamily Shape
 @turbodispatch score(::Shape)
+copyshape(x::Circle)=Square(x.n)
+copyshape(x::Square)=Circle(x.n)
+shapeinfo(x::Shape,y::Shape)=(x.n+y.n,copyshape(y))
+lazycopyshape(x::Shape)=copyshape(x)
+@turbodispatch copyshape(::Shape) tag=Shape
+@turbodispatch shapeinfo(::Shape,::Shape)::Tuple{Int,Shape} tag=(Int,Shape)
+if VERSION==v"1.13.3" && Sys.islinux() && Sys.ARCH===:x86_64
+    @turbodispatch :lazy lazycopyshape(::Shape) tag=Shape
+end
+@testset "tagged returns" begin
+    x,y=tagged(Shape,[Circle(3),Square(5)])
+    @test (@inferred copyshape(x)) === tagged(Shape,Square(3))
+    @test copyshape(raw(x)) === Square(3)
+    @test (@inferred shapeinfo(x,y)) === (8,tagged(Shape,Circle(5)))
+    @test shapeinfo(y,x) === (8,tagged(Shape,Square(3)))
+    if VERSION==v"1.13.3" && Sys.islinux() && Sys.ARCH===:x86_64
+        @test lazycopyshape(x) === tagged(Shape,Square(3))
+    end
+end
 shifted(x::Shape,y::Shape,shift::Int)=score(x)+score(y)+shift
 function callshifted(x,y,shift)
     @turbodispatch result = shifted(x::Shape,y::Shape,shift::Int)

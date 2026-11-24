@@ -9,6 +9,13 @@ Use an unnamed family type at each tagged argument position. For example, `@turb
 @turbodispatch
 ```
 
+Use `tag=ResultFamily` to wrap a result for another dispatched call. For a tuple result, each position names either a declared family to tag or an ordinary type to check and pass through. Here `ResultFamily` is declared with `@dispatchfamily`, and `describe` returns an integer and a member of that family.
+
+```julia
+@turbodispatch describe(::Item) tag=(Int, ResultFamily)
+count, tagged_result = describe(tagged_item)
+```
+
 ## Tagged values
 
 ```@docs

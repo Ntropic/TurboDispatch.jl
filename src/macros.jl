@@ -81,6 +81,7 @@ end
     @turbodispatch f(::Family, extra::ExtraType)
     @turbodispatch result = f(x::Family, extra::ExtraType)
     @turbodispatch :lazy f(::Family)::ReturnType
+    @turbodispatch f(::Family) tag=ResultFamily
 
 **Inputs**
 
@@ -89,12 +90,14 @@ end
 - `extra::ExtraType` — an ordinary positional argument.
 - `:lazy` — optional first-use compilation on Julia 1.13.3 for Linux x86-64, at runtime.
 - `::ReturnType` — optional result type assertion.
+- `tag` — a declared output family or a tuple of types for a tuple result.
 
 **Outputs**
 
 - A prepared callable or, in assignment form, the result of the call.
 
 Install overloads that let the function accept tagged arguments.
+With `tag=(Int, ResultFamily)`, the first field must be an `Int` and the second is tagged with `ResultFamily`.
 In assignment form, annotations naming declared families select the tagged arguments. Other arguments pass through. Define the function and declare its families before the caller.
 """
 macro turbodispatch(signature,options...)
@@ -151,7 +154,13 @@ macro turbodispatch(signature,options...)
     register=GlobalRef(@__MODULE__,:registerfunction!)
     keywords=Any[Expr(:kw,:dispatch_positions,Tuple(positions)),Expr(:kw,:compilation,QuoteNode(compilation))]
     return_type===nothing || push!(keywords,Expr(:kw,:return_type,return_type))
-    isempty(options) || throw(ArgumentError("use a leading :lazy and an optional ::ReturnType; hot belongs on @dispatchfamily"))
+    if !isempty(options)
+        length(options)==1 || throw(ArgumentError("only one tag option is supported"))
+        option=only(options)
+        option isa Expr && option.head===:(=) && option.args[1]===:tag ||
+            throw(ArgumentError("use tag=ResultFamily to tag the result"))
+        push!(keywords,Expr(:kw,:tag,option.args[2]))
+    end
     registration=Expr(:call,register,Expr(:parameters,keywords...),f,roots...)
     body=quote
         const $registered=$registration

@@ -1,14 +1,39 @@
 const PREPARED = WeakRef[]
 
-function registerfunction!(f, roots::Type...; return_type=:auto, backend=:auto, compilation=:eager, dispatch_positions=Tuple(eachindex(roots)))
+function registerfunction!(f, roots::Type...; return_type=:auto, backend=:auto, compilation=:eager, dispatch_positions=Tuple(eachindex(roots)), tag=nothing)
     lock(REGISTRY_LOCK) do
-        preparedispatch(f,roots;return_type,backend,compilation,dispatch_positions)
+        preparedispatch(f,roots;return_type,backend,compilation,dispatch_positions,output=outputtag(tag))
     end
 end
 
 struct CallSignature{T} end
 signaturetypes(::Type{CallSignature{T}}) where T=T.parameters
-struct DispatchConfig{S,P,M,O,C,R,H} end
+struct DispatchConfig{S,P,M,O,C,R,H,T} end
+struct OutputTag{A} end
+
+outputtag(::Nothing)=Nothing
+function outputtag(tag::Type)
+    isdeclared(tag) || throw(ArgumentError("declare the output family with @dispatchfamily first"))
+    OutputTag{tag}
+end
+function outputtag(spec::Tuple)
+    all(T->T isa Type,spec) || throw(ArgumentError("tuple tag entries must be types"))
+    Tuple{map(T->isdeclared(T) ? OutputTag{T} : T,spec)...}
+end
+outputtag(spec)=throw(ArgumentError("tag must specify a declared family or a tuple of types"))
+
+@inline tagresult(::Type{Nothing},value)=value
+@inline tagresult(::Type{OutputTag{A}},value) where A=convert(TaggedArg{A},value)
+@inline tagfield(::Type{T},value) where T=value::T
+@inline tagfield(::Type{OutputTag{A}},value) where A=tagresult(OutputTag{A},value)
+@inline @generated function tagresult(::Type{T},value) where T<:Tuple
+    fields=[:(tagfield($field,value[$i])) for (i,field) in enumerate(T.parameters)]
+    quote
+        value isa Tuple && length(value)==$(length(fields)) ||
+            throw(ArgumentError("result must be a tuple matching the tag specification"))
+        ($(fields...),)
+    end
+end
 mutable struct LazyEntry
     @atomic pointer::Ptr{Cvoid}
     LazyEntry()=new(C_NULL)
@@ -36,7 +61,7 @@ backend(::PreparedDispatch)=:binary
 preparedorder(::PreparedDispatch{F,Fs,K}) where {F,Fs,K}=K.parameters[4]
 
 function preparedispatch(f,signature;backend=:auto,compilation=:eager,
-                          dispatch_positions=Tuple(eachindex(signature)),return_type=:auto)
+                          dispatch_positions=Tuple(eachindex(signature)),return_type=:auto,output=Nothing)
     backend in (:auto,:binary) || throw(ArgumentError("backend must be :auto or :binary"))
     compilation in (:eager,:lazy) || throw(ArgumentError("compilation must be :eager or :lazy"))
     positions=Tuple(dispatch_positions)
@@ -59,10 +84,10 @@ function preparedispatch(f,signature;backend=:auto,compilation=:eager,
         r=ref.value
         r===nothing && continue
         typeof(r.f)===typeof(f) && r.f===f || continue
-        key=(CallSignature{Tuple{signature...}},positions,Tuple{map(ms->Tuple{ms...},members)...},orders,compilation,R,hot_groups)
+        key=(CallSignature{Tuple{signature...}},positions,Tuple{map(ms->Tuple{ms...},members)...},orders,compilation,R,hot_groups,output)
         Tuple(typeof(r).parameters[3].parameters)==key && return r
     end
-    T=PreparedDispatch{typeof(f),typeof(families),DispatchConfig{CallSignature{Tuple{signature...}},positions,Tuple{map(ms->Tuple{ms...},members)...},orders,compilation,R,hot_groups}}
+    T=PreparedDispatch{typeof(f),typeof(families),DispatchConfig{CallSignature{Tuple{signature...}},positions,Tuple{map(ms->Tuple{ms...},members)...},orders,compilation,R,hot_groups,output}}
     r=T(f,families,[LazyEntry() for _ in 1:(compilation===:lazy ? count : 0)],Core.CodeInstance[])
     if compilation===:eager
         for combination in Iterators.product(members...)
@@ -75,23 +100,26 @@ function preparedispatch(f,signature;backend=:auto,compilation=:eager,
     r
 end
 
-struct NativeValueLeaf{F,Types,R} end
-@inline @generated function nativeleafapply(::NativeValueLeaf{F,Types,R},f,args) where {F,Types,R}
+struct NativeValueLeaf{F,Types,R,T} end
+@inline @generated function nativeleafapply(::NativeValueLeaf{F,Types,R,T},f,args) where {F,Types,R,T}
     values=[:(pointervalue($T,args[$i])) for (i,T) in enumerate(Types.parameters)]
     callable=Base.issingletontype(F) ? QuoteNode(F.instance) : :(f::$F)
     expression=:($callable($(values...))::$R)
     # A boxed native result ABI supports arbitrary user returns without guessing their layout.
-    R===Int ? expression : :(Base.inferencebarrier($expression))
+    if T!==Nothing
+        expression=:(tagresult($T,$expression))
+    end
+    R===Int && T===Nothing ? expression : :(Base.inferencebarrier($expression))
 end
 const NATIVE_ARITIES=Set{Int}()
 function nativearity!(n)
     n in NATIVE_ARITIES && return
     names=[gensym(:arg) for _ in 1:n]
     signature=[:($name::Ptr{Cvoid}) for name in names]
-    @eval @noinline function (leaf::NativeValueLeaf{F,Types,R})(f::Any,$(signature...)) where {F,Types,R}
+    @eval @noinline function (leaf::NativeValueLeaf{F,Types,R,T})(f::Any,$(signature...)) where {F,Types,R,T}
         nativeleafapply(leaf,f,($(names...),))
     end
-    @eval @noinline function (leaf::NativeValueLeaf{F,Types,R})($(signature...)) where {F,Types,R}
+    @eval @noinline function (leaf::NativeValueLeaf{F,Types,R,T})($(signature...)) where {F,Types,R,T}
         nativeleafapply(leaf,F.instance,($(names...),))
     end
     push!(NATIVE_ARITIES,n)
@@ -109,21 +137,21 @@ end
 @noinline Base.@nospecializeinfer function compileentry!(r,entry::LazyEntry,slot::Int)::Ptr{Cvoid}
     Base.@nospecialize r
     F=typeof(r).parameters[1]
-    S,P,M,O,C,R,H=typeof(r).parameters[3].parameters
+    S,P,M,O,C,R,H,T=typeof(r).parameters[3].parameters
     types=Any[signaturetypes(S)...]
     index=CartesianIndices(Tuple(length(ms.parameters) for ms in M.parameters))[slot]
     for (axis,pos) in enumerate(P)
         ms=M.parameters[axis].parameters
         types[pos]=ms[index[axis]]
     end
-    leaf=NativeValueLeaf{F,Tuple{types...},R}()
+    leaf=NativeValueLeaf{F,Tuple{types...},R,T}()
     nativearity!(length(types))
     sig=Base.issingletontype(F) ? Tuple{typeof(leaf),fill(Ptr{Cvoid},length(types))...} : Tuple{typeof(leaf),Any,fill(Ptr{Cvoid},length(types))...}
     mi=Base.specialize_method(Base._which(sig;world=Base.get_world_counter()))
     ci=Base.Compiler.typeinf_ext_toplevel(Base.Compiler.NativeInterpreter(Base.get_world_counter()),mi,Base.Compiler.SOURCE_MODE_ABI)
     flags=Ref{UInt8}(0);invoke=Ref{Ptr{Cvoid}}(C_NULL);spec=Ref{Ptr{Cvoid}}(C_NULL)
     ccall(:jl_read_codeinst_invoke,Cvoid,(Any,Ref{UInt8},Ref{Ptr{Cvoid}},Ref{Ptr{Cvoid}},Cint),ci,flags,invoke,spec,1)
-    abi_return=R===Int ? Int : Any
+    abi_return=R===Int && T===Nothing ? Int : Any
     ci.rettype in (abi_return,Union{}) && flags[]&1==1 && spec[]!=C_NULL || error("unsupported native entry ABI")
     push!(r.owners,ci)
     @atomic :release entry.pointer=spec[]
@@ -154,7 +182,7 @@ end
     entry=@inbounds r.entries[slot]
     pointer=@atomic :acquire entry.pointer
     pointer==C_NULL && (pointer=initializeentry!(r,slot))
-    R=K.parameters[6]
+    R=K.parameters[8]===Nothing ? K.parameters[6] : Any
     GC.@preserve r nativevaluecall(pointer,r.f,args,R)::R
 end
 
@@ -168,13 +196,14 @@ end
     valuetag(Members,arg)
 end
 
-function branchcode(S,P,M,O,C,R,H,start,types,slot)
+function branchcode(S,P,M,O,C,R,H,T,start,types,slot)
     strides=cumprod([1;[length(ms.parameters) for ms in M.parameters][1:end-1]])
     function emit(axis,types,slot)
         if axis>length(P)
             if C===:lazy; return :(preparedentry(r,$slot,values)); end
             vals=[:(pointervalue($(types[i]),values[$i])) for i in eachindex(types)]
-            return :(r.f($(vals...))::$R)
+            result=:(r.f($(vals...))::$R)
+            return T===Nothing ? result : :(tagresult($T,$result))
         end
         function tagtest(ids)
             sorted=sort(collect(ids));terms=Any[];lo=hi=first(sorted)
@@ -220,10 +249,10 @@ for n in 1:14
     names=[gensym(:value) for _ in 1:n]
     tuple=QuoteNode(Expr(:tuple,names...))
     @eval @inline @generated function preparedtail(r::PreparedDispatch{F,Fs,K},::Val{Axis},::Val{Prefix},::Val{Slot},tags::NTuple{L,UInt},$(names...)) where {F,Fs,K,Axis,Prefix,Slot,L}
-        S,P,M,O,C,R,H=K.parameters
+        S,P,M,O,C,R,H,T=K.parameters
         types=Any[signaturetypes(S)...]
         for i in eachindex(Prefix);types[P[i]]=M.parameters[i].parameters[Prefix[i]];end
-        body=branchcode(S,P,M,O,C,R,H,Axis,types,Slot)
+        body=branchcode(S,P,M,O,C,R,H,T,Axis,types,Slot)
         quote
             values=$($tuple)
             $body
@@ -231,10 +260,10 @@ for n in 1:14
     end
 end
 @inline @generated function preparedtail(r::PreparedDispatch{F,Fs,K},::Val{Axis},::Val{Prefix},::Val{Slot},tags,args...) where {F,Fs,K,Axis,Prefix,Slot}
-    S,P,M,O,C,R,H=K.parameters
+    S,P,M,O,C,R,H,T=K.parameters
     types=Any[signaturetypes(S)...]
     for i in eachindex(Prefix);types[P[i]]=M.parameters[i].parameters[Prefix[i]];end
-    body=branchcode(S,P,M,O,C,R,H,Axis,types,Slot)
+    body=branchcode(S,P,M,O,C,R,H,T,Axis,types,Slot)
     quote
         values=args
         $body
@@ -254,17 +283,17 @@ end
 end
 
 @inline @generated function frontendtag(r::PreparedDispatch{F,Fs,K},::Val{I},x)::UInt where {F,Fs,K,I}
-    S,P,M,O,C,R,H=K.parameters
+    S,P,M=K.parameters
     axis=findfirst(==(I),P)
     axis===nothing && return :(x isa $(signaturetypes(S)[I]) ? UInt(0) : throw(ArgumentError("extra argument does not match its declared type")))
     :(preparedtag(r.families[$axis],$(M.parameters[axis]),x))
 end
 
 @inline @generated function pointerkernel(r::PreparedDispatch{F,Fs,K},alltags::NTuple{N,UInt},pointers::NTuple{N,Ptr{Cvoid}}) where {F,Fs,K,N}
-    S,P,M,O,C,R,H=K.parameters
+    S,P,M,O,C,R,H,T=K.parameters
     N==length(signaturetypes(S)) || return :(throw(ArgumentError("incorrect argument count")))
     tags=[:(alltags[$i]) for i in P]
-    body=branchcode(S,P,M,O,C,R,H,1,Any[signaturetypes(S)...],1)
+    body=branchcode(S,P,M,O,C,R,H,T,1,Any[signaturetypes(S)...],1)
     quote
         tags=($(tags...),)
         values=pointers
@@ -317,9 +346,9 @@ Assign the result back to `run` to use the new dispatcher.
 """
 function refresh!(r::PreparedDispatch{F,Fs,K}) where {F,Fs,K}
     lock(REGISTRY_LOCK) do
-        S,P,M,O,C,R,H=K.parameters
+        S,P,M,O,C,R,H,T=K.parameters
         filter!(ref->ref.value!==nothing && ref.value!==r,PREPARED)
-        preparedispatch(r.f,Tuple(signaturetypes(S));compilation=C,dispatch_positions=P,return_type=R)
+        preparedispatch(r.f,Tuple(signaturetypes(S));compilation=C,dispatch_positions=P,return_type=R,output=T)
     end
 end
 """

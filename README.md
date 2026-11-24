@@ -25,7 +25,7 @@ Pkg.add(url="https://github.com/Ntropic/TurboDispatch.jl")
 
 #### Declare a family
 
-Here, `score` accepts four kinds of `Item`. These four concrete types form a *family*. Declare their common supertype with `@dispatchfamily Item` to assign each member a tag.
+Here, `shift` accepts four kinds of `Item`. These four concrete types form a *family*. Declare their common supertype with `@dispatchfamily Item` to assign each member a tag.
 
 ```julia
 using TurboDispatch
@@ -56,18 +56,17 @@ append!(items, [Samples([1, 2, 3])])
 
 #### Dispatch Function
 
-Define the ordinary methods first. At the call site, `@turbodispatch` prepares the tagged overload and calls it. The two `Item` annotations select the tagged arguments, and `shift::Int` passes through.
+Define the ordinary methods first. At the call site, `@turbodispatch` dispatches on the tag of the `Item` argument and passes `offset::Int` through.
 
 ```julia
-score(x::Count, offset::Int) = x.n + offset
-score(x::Level, offset::Int) = round(Int, x.value) + offset
-score(x::Phasor, offset::Int) = round(Int, abs(x.amplitude)) + offset
-score(x::Samples, offset::Int) = sum(x.values) + offset
-score(x::Item, y::Item, shift::Int) = score(x, 0) + score(y, 0) + shift
+shift(x::Count, offset::Int) = x.n + offset
+shift(x::Level, offset::Int) = round(Int, x.value) + offset
+shift(x::Phasor, offset::Int) = round(Int, abs(x.amplitude)) + offset
+shift(x::Samples, offset::Int) = sum(x.values) + offset
 
-x, y = items[1], items[3]
-shift = 2
-@turbodispatch result = score(x::Item, y::Item, shift::Int)  # 10
+x = items[3]
+offset = 2
+@turbodispatch result = shift(x::Item, offset::Int)  # 7
 ```
 
 ## Benchmark summary
